@@ -1,0 +1,58 @@
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Environment:
+      Variables:
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        AWS_REGION: !Ref AWS::Region
+
+Parameters:
+  NeptuneClusterEndpoint:
+    Type: String
+    Description: Neptune cluster endpoint for prompt graph database
+  
+  AllowedOrigin:
+    Type: String
+    Description: Allowed CORS origin
+
+Resources:
+  GetPromptFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/get-prompt/app.handler
+      Runtime: nodejs20.x
+      CodeUri: ../../
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - neptune-db:connect
+                - neptune-db:ReadDataViaQuery
+              Resource:
+                - !Sub "arn:aws:neptune-db:${AWS::Region}:${AWS::AccountId}:*/*"
+      Environment:
+        Variables:
+          NEPTUNE_CLUSTER_ENDPOINT: !Ref NeptuneClusterEndpoint
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - modules/prompt-management/src/get-prompt/app.ts
+        External:
+          - "@aws-sdk/client-neptune"
+          - "gremlin"
+
+Outputs:
+  GetPromptFunctionArn:
+    Description: ARN of the GetPrompt Lambda Function
+    Value: !GetAtt GetPromptFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GetPromptFunctionArn"
+

@@ -277,6 +277,71 @@ paths:
         requestTemplates:
           application/json: '{"statusCode": 200}'
 
+  /prompts/{useCaseId}:
+    get:
+      summary: Get Prompt Template for Use Case
+      description: Retrieve the active prompt template for a specific use case from Neptune
+      parameters:
+        - name: useCaseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The ID of the use case
+      responses:
+        "200":
+          description: Successful response with prompt template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetPromptResponseBody"
+        "404":
+          description: Prompt Not Found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-amazon-apigateway-request-validator: ValidateParameters
+      x-amazon-apigateway-integration:
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${PromptManagementModuleResources.Outputs.GetPromptFunctionArn}/invocations"
+        credentials:
+          Fn::Sub: "${RestApiRole.Arn}"
+    options:
+      summary: CORS preflight for /prompts/{useCaseId}
+      responses:
+        "200":
+          description: Successful CORS preflight response
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: "mock"
+        responses:
+          default:
+            statusCode: "200"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+
 x-amazon-apigateway-request-validators:
   ValidateBody:
     validateRequestBody: true
@@ -433,6 +498,23 @@ components:
           type: string
           nullable: true
           description: Error message if generation failed
+
+    GetPromptResponseBody:
+      type: object
+      properties:
+        promptId:
+          type: string
+        useCaseId:
+          type: string
+        promptText:
+          type: string
+        systemPrompt:
+          type: string
+          nullable: true
+        version:
+          type: integer
+        isActive:
+          type: boolean
 
     ErrorResponse:
       type: object
