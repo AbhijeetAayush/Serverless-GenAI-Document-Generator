@@ -71,6 +71,80 @@ paths:
         requestTemplates:
           application/json: '{"statusCode": 200}'
 
+  /documents:
+    get:
+      summary: List User Documents
+      description: Retrieve all documents uploaded by the authenticated user
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: ["UPLOADED", "PROCESSING", "PROCESSED", "FAILED"]
+          required: false
+          description: Filter documents by status
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          required: false
+          description: Number of documents per page
+        - in: query
+          name: cursor
+          schema:
+            type: string
+          required: false
+          description: Cursor for pagination (base64-encoded LastEvaluatedKey)
+      responses:
+        "200":
+          description: Successful response with list of documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListDocumentsResponseBody"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      x-amazon-apigateway-integration:
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri:
+          Fn::Sub: "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DocumentIngestionModuleResources.Outputs.ListDocumentsFunctionArn}/invocations"
+        credentials:
+          Fn::Sub: "${RestApiRole.Arn}"
+    options:
+      summary: CORS preflight for /documents
+      responses:
+        "200":
+          description: Successful CORS preflight response
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: "mock"
+        responses:
+          default:
+            statusCode: "200"
+            responseParameters:
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        requestTemplates:
+          application/json: '{"statusCode": 200}'
+
 x-amazon-apigateway-request-validators:
   ValidateBody:
     validateRequestBody: true
@@ -114,6 +188,52 @@ components:
           type: integer
           description: Seconds until URL expires
           example: 3600
+
+    ListDocumentsResponseBody:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentMetadata"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor for the next page, null if no more pages
+        totalCount:
+          type: integer
+          description: Total number of documents (if available)
+
+    DocumentMetadata:
+      type: object
+      properties:
+        documentId:
+          type: string
+        userId:
+          type: string
+        fileName:
+          type: string
+        fileType:
+          type: string
+          enum: ["PDF", "DOCX", "TXT", "XLSX", "PPTX"]
+        fileSize:
+          type: integer
+        status:
+          type: string
+          enum: ["UPLOADED", "PROCESSING", "PROCESSED", "FAILED"]
+        uploadedAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+        embeddingStatus:
+          type: string
+          enum: ["PENDING", "COMPLETED", "FAILED"]
+        chunkCount:
+          type: integer
+          nullable: true
 
     ErrorResponse:
       type: object

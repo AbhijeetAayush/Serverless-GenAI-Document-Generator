@@ -142,6 +142,7 @@ Resources:
                   - lambda:InvokeFunction
                 Resource:
                   - !GetAtt DocumentIngestionModuleResources.Outputs.UploadDocumentFunctionArn
+                  - !GetAtt DocumentIngestionModuleResources.Outputs.ListDocumentsFunctionArn
                   - !GetAtt DocumentIngestionModuleResources.Outputs.ProcessDocumentFunctionArn
                   - !GetAtt PromptManagementModuleResources.Outputs.GetPromptFunctionArn
                   - !GetAtt PromptManagementModuleResources.Outputs.CreatePromptFunctionArn

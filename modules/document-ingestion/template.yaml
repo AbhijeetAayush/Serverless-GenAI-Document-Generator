@@ -60,10 +60,42 @@ Resources:
           - "@aws-sdk/client-dynamodb"
           - "@aws-sdk/lib-dynamodb"
 
+  ListDocumentsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/list-documents/app.handler
+      Runtime: nodejs20.x
+      CodeUri: ../../
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataTableName
+      Environment:
+        Variables:
+          METADATA_TABLE_NAME: !Ref MetadataTableName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - modules/document-ingestion/src/list-documents/app.ts
+        External:
+          - "@aws-sdk/client-dynamodb"
+          - "@aws-sdk/lib-dynamodb"
+
 Outputs:
   UploadDocumentFunctionArn:
     Description: ARN of the UploadDocument Lambda Function
     Value: !GetAtt UploadDocumentFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-UploadDocumentFunctionArn"
+
+  ListDocumentsFunctionArn:
+    Description: ARN of the ListDocuments Lambda Function
+    Value: !GetAtt ListDocumentsFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-ListDocumentsFunctionArn"
 
