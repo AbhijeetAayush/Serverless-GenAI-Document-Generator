@@ -49,10 +49,49 @@ Resources:
           - "@aws-sdk/client-neptune"
           - "gremlin"
 
+  CreatePromptFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/create-prompt/app.handler
+      Runtime: nodejs20.x
+      CodeUri: ../../
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - neptune-db:connect
+                - neptune-db:ReadDataViaQuery
+                - neptune-db:WriteDataViaQuery
+              Resource:
+                - !Sub "arn:aws:neptune-db:${AWS::Region}:${AWS::AccountId}:*/*"
+      Environment:
+        Variables:
+          NEPTUNE_CLUSTER_ENDPOINT: !Ref NeptuneClusterEndpoint
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - modules/prompt-management/src/create-prompt/app.ts
+        External:
+          - "@aws-sdk/client-neptune"
+          - "gremlin"
+
 Outputs:
   GetPromptFunctionArn:
     Description: ARN of the GetPrompt Lambda Function
     Value: !GetAtt GetPromptFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-GetPromptFunctionArn"
+
+  CreatePromptFunctionArn:
+    Description: ARN of the CreatePrompt Lambda Function
+    Value: !GetAtt CreatePromptFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-CreatePromptFunctionArn"
 
