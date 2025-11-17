@@ -86,6 +86,32 @@ Resources:
           - "@aws-sdk/client-dynamodb"
           - "@aws-sdk/lib-dynamodb"
 
+  GetDocumentStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/get-document-status/app.handler
+      Runtime: nodejs20.x
+      CodeUri: ../../
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataTableName
+      Environment:
+        Variables:
+          METADATA_TABLE_NAME: !Ref MetadataTableName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - modules/document-ingestion/src/get-document-status/app.ts
+        External:
+          - "@aws-sdk/client-dynamodb"
+          - "@aws-sdk/lib-dynamodb"
+
 Outputs:
   UploadDocumentFunctionArn:
     Description: ARN of the UploadDocument Lambda Function
@@ -98,4 +124,10 @@ Outputs:
     Value: !GetAtt ListDocumentsFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-ListDocumentsFunctionArn"
+
+  GetDocumentStatusFunctionArn:
+    Description: ARN of the GetDocumentStatus Lambda Function
+    Value: !GetAtt GetDocumentStatusFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GetDocumentStatusFunctionArn"
 
