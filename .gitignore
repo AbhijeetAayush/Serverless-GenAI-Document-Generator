@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.aws-sam/
+*.log
+.DS_Store
+.env
+.env.local
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+coverage/
+*.zip
+*.tar.gz
+samconfig.toml
+

@@ -1,0 +1,219 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: SAM Template for Serverless GenAI Document Generator
+
+Parameters:
+  ExistingUserPoolId:
+    Type: String
+    Description: ID of the existing Cognito User Pool
+    Default: "GenAI-DocGen-UserPool"
+  
+  AllowedOrigin:
+    Type: String
+    Description: Allowed CORS origin for API Gateway
+    Default: "*"
+
+Resources:
+  # S3 Bucket for document uploads
+  DocumentsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-documents"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+  # S3 Bucket for generated outputs
+  OutputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-outputs"
+      VersioningConfiguration:
+        Status: Disabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldFiles
+            Status: Enabled
+            ExpirationInDays: 7
+
+  # DynamoDB Table for document metadata
+  DocumentMetadataTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    Properties:
+      TableName: !Sub "DocumentMetadata-${AWS::StackName}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: documentId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: uploadedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: documentId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserDocumentsIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: uploadedAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # OpenSearch Domain for vector storage
+  OpenSearchDomain:
+    Type: AWS::OpenSearch::Domain
+    Properties:
+      DomainName: !Sub "${AWS::StackName}-vector-db"
+      EngineVersion: "OpenSearch_2.11"
+      ClusterConfig:
+        InstanceType: t3.small.search
+        InstanceCount: 1
+      EBSOptions:
+        EBSEnabled: true
+        VolumeType: gp3
+        VolumeSize: 20
+      AccessPolicies:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: es:*
+            Resource: !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/${AWS::StackName}-vector-db/*"
+      NodeToNodeEncryptionOptions:
+        Enabled: true
+      EncryptionAtRestOptions:
+        Enabled: true
+
+  # Neptune Cluster for prompt graph database
+  NeptuneDBCluster:
+    Type: AWS::Neptune::DBCluster
+    Properties:
+      DBClusterIdentifier: !Sub "${AWS::StackName}-prompt-graph"
+      EngineVersion: "1.2.0.2"
+      DatabaseName: promptdb
+      StorageEncrypted: true
+      IamAuthEnabled: true
+
+  NeptuneDBInstance:
+    Type: AWS::Neptune::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${AWS::StackName}-neptune-instance"
+      DBInstanceClass: db.t3.medium
+      DBClusterIdentifier: !Ref NeptuneDBCluster
+      Engine: neptune
+
+  # API Gateway Role
+  RestApiRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource:
+                  - !GetAtt DocumentIngestionModuleResources.Outputs.UploadDocumentFunctionArn
+                  - !GetAtt DocumentIngestionModuleResources.Outputs.ProcessDocumentFunctionArn
+                  - !GetAtt PromptManagementModuleResources.Outputs.GetPromptFunctionArn
+                  - !GetAtt PromptManagementModuleResources.Outputs.CreatePromptFunctionArn
+                  - !GetAtt QueryRetrievalModuleResources.Outputs.GenerateDocumentFunctionArn
+                  - !GetAtt OutputFormatterModuleResources.Outputs.FormatOutputFunctionArn
+
+  # API Gateway
+  DocumentGeneratorApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      DefinitionBody:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: ./api/backend-api.yaml
+
+  # Nested SAM Applications for Microservices
+  DocumentIngestionModuleResources:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./modules/document-ingestion/template.yaml
+      Parameters:
+        DocumentsBucketName: !Ref DocumentsBucket
+        MetadataTableName: !Ref DocumentMetadataTable
+        OpenSearchDomainEndpoint: !GetAtt OpenSearchDomain.DomainEndpoint
+        AllowedOrigin: !Ref AllowedOrigin
+
+  PromptManagementModuleResources:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./modules/prompt-management/template.yaml
+      Parameters:
+        NeptuneClusterEndpoint: !GetAtt NeptuneDBCluster.Endpoint
+        AllowedOrigin: !Ref AllowedOrigin
+
+  QueryRetrievalModuleResources:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./modules/query-retrieval/template.yaml
+      Parameters:
+        OpenSearchDomainEndpoint: !GetAtt OpenSearchDomain.DomainEndpoint
+        NeptuneClusterEndpoint: !GetAtt NeptuneDBCluster.Endpoint
+        DocumentsBucketName: !Ref DocumentsBucket
+        AllowedOrigin: !Ref AllowedOrigin
+
+  OutputFormatterModuleResources:
+    Type: AWS::Serverless::Application
+    Properties:
+      Location: ./modules/output-formatter/template.yaml
+      Parameters:
+        OutputBucketName: !Ref OutputBucket
+        AllowedOrigin: !Ref AllowedOrigin
+
+Outputs:
+  DocumentGeneratorApi:
+    Description: URL of the API Gateway
+    Value: !Sub "https://${DocumentGeneratorApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  
+  DocumentsBucketName:
+    Description: Name of the documents S3 bucket
+    Value: !Ref DocumentsBucket
+  
+  OutputBucketName:
+    Description: Name of the outputs S3 bucket
+    Value: !Ref OutputBucket
+  
+  OpenSearchDomainEndpoint:
+    Description: OpenSearch Domain Endpoint
+    Value: !GetAtt OpenSearchDomain.DomainEndpoint
+  
+  NeptuneClusterEndpoint:
+    Description: Neptune Cluster Endpoint
+    Value: !GetAtt NeptuneDBCluster.Endpoint
+
