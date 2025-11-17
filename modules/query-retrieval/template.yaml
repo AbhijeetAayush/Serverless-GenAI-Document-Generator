@@ -1,0 +1,91 @@
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Environment:
+      Variables:
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        AWS_REGION: !Ref AWS::Region
+
+Parameters:
+  OpenSearchDomainEndpoint:
+    Type: String
+    Description: OpenSearch domain endpoint for vector search
+  
+  NeptuneClusterEndpoint:
+    Type: String
+    Description: Neptune cluster endpoint for prompt retrieval
+  
+  DocumentsBucketName:
+    Type: String
+    Description: Name of the S3 bucket for documents
+  
+  AllowedOrigin:
+    Type: String
+    Description: Allowed CORS origin
+
+Resources:
+  GenerateDocumentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/generate-document/app.handler
+      Runtime: nodejs20.x
+      CodeUri: ../../
+      Timeout: 900
+      MemorySize: 1024
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - es:ESHttpGet
+                - es:ESHttpPost
+                - es:DescribeElasticsearchDomain
+              Resource:
+                - !Sub "arn:aws:es:${AWS::Region}:${AWS::AccountId}:domain/*/*"
+            - Effect: Allow
+              Action:
+                - neptune-db:connect
+                - neptune-db:ReadDataViaQuery
+              Resource:
+                - !Sub "arn:aws:neptune-db:${AWS::Region}:${AWS::AccountId}:*/*"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
+                - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+              Resource:
+                - !Sub "arn:aws:s3:::${DocumentsBucketName}/*"
+      Environment:
+        Variables:
+          OPENSEARCH_DOMAIN_ENDPOINT: !Ref OpenSearchDomainEndpoint
+          NEPTUNE_CLUSTER_ENDPOINT: !Ref NeptuneClusterEndpoint
+          DOCUMENTS_BUCKET_NAME: !Ref DocumentsBucketName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - modules/query-retrieval/src/generate-document/app.ts
+        External:
+          - "@aws-sdk/client-bedrock-runtime"
+          - "@aws-sdk/client-opensearch"
+          - "@aws-sdk/client-neptune"
+          - "@aws-sdk/client-s3"
+          - "@aws-sdk/lib-dynamodb"
+          - "@aws-sdk/client-dynamodb"
+
+Outputs:
+  GenerateDocumentFunctionArn:
+    Description: ARN of the GenerateDocument Lambda Function
+    Value: !GetAtt GenerateDocumentFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GenerateDocumentFunctionArn"
+
