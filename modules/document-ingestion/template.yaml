@@ -1,0 +1,69 @@
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Environment:
+      Variables:
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        DOCUMENTS_BUCKET_NAME: !Ref DocumentsBucketName
+        METADATA_TABLE_NAME: !Ref MetadataTableName
+        AWS_REGION: !Ref AWS::Region
+
+Parameters:
+  DocumentsBucketName:
+    Type: String
+    Description: Name of the S3 bucket for document uploads
+  
+  MetadataTableName:
+    Type: String
+    Description: Name of the DynamoDB table for document metadata
+  
+  AllowedOrigin:
+    Type: String
+    Description: Allowed CORS origin
+
+Resources:
+  UploadDocumentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/upload-document/app.handler
+      Runtime: nodejs20.x
+      CodeUri: ../../
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref MetadataTableName
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - s3:PutObject
+                - s3:GetObject
+              Resource:
+                - !Sub "arn:aws:s3:::${DocumentsBucketName}/*"
+      Environment:
+        Variables:
+          DOCUMENTS_BUCKET_NAME: !Ref DocumentsBucketName
+          METADATA_TABLE_NAME: !Ref MetadataTableName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - modules/document-ingestion/src/upload-document/app.ts
+        External:
+          - "@aws-sdk/client-s3"
+          - "@aws-sdk/s3-request-presigner"
+          - "@aws-sdk/client-dynamodb"
+          - "@aws-sdk/lib-dynamodb"
+
+Outputs:
+  UploadDocumentFunctionArn:
+    Description: ARN of the UploadDocument Lambda Function
+    Value: !GetAtt UploadDocumentFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-UploadDocumentFunctionArn"
+
