@@ -20,6 +20,10 @@ Parameters:
     Type: String
     Description: Name of the S3 bucket for documents
   
+  MetadataTableName:
+    Type: String
+    Description: Name of the DynamoDB table for metadata
+  
   AllowedOrigin:
     Type: String
     Description: Allowed CORS origin
@@ -82,10 +86,49 @@ Resources:
           - "@aws-sdk/lib-dynamodb"
           - "@aws-sdk/client-dynamodb"
 
+  GetGenerationStatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/get-generation-status/app.handler
+      Runtime: nodejs20.x
+      CodeUri: ../../
+      Timeout: 30
+      MemorySize: 256
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource:
+                - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MetadataTableName}"
+                - !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MetadataTableName}/index/*"
+      Environment:
+        Variables:
+          METADATA_TABLE_NAME: !Ref MetadataTableName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: es2022
+        Sourcemap: false
+        EntryPoints:
+          - modules/query-retrieval/src/get-generation-status/app.ts
+        External:
+          - "@aws-sdk/lib-dynamodb"
+          - "@aws-sdk/client-dynamodb"
+
 Outputs:
   GenerateDocumentFunctionArn:
     Description: ARN of the GenerateDocument Lambda Function
     Value: !GetAtt GenerateDocumentFunction.Arn
     Export:
       Name: !Sub "${AWS::StackName}-GenerateDocumentFunctionArn"
+
+  GetGenerationStatusFunctionArn:
+    Description: ARN of the GetGenerationStatus Lambda Function
+    Value: !GetAtt GetGenerationStatusFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-GetGenerationStatusFunctionArn"
 

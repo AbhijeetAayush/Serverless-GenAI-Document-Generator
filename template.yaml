@@ -148,6 +148,7 @@ Resources:
                   - !GetAtt PromptManagementModuleResources.Outputs.GetPromptFunctionArn
                   - !GetAtt PromptManagementModuleResources.Outputs.CreatePromptFunctionArn
                   - !GetAtt QueryRetrievalModuleResources.Outputs.GenerateDocumentFunctionArn
+                  - !GetAtt QueryRetrievalModuleResources.Outputs.GetGenerationStatusFunctionArn
                   - !GetAtt OutputFormatterModuleResources.Outputs.FormatOutputFunctionArn
 
   # API Gateway
@@ -188,6 +189,7 @@ Resources:
         OpenSearchDomainEndpoint: !GetAtt OpenSearchDomain.DomainEndpoint
         NeptuneClusterEndpoint: !GetAtt NeptuneDBCluster.Endpoint
         DocumentsBucketName: !Ref DocumentsBucket
+        MetadataTableName: !Ref DocumentMetadataTable
         AllowedOrigin: !Ref AllowedOrigin
 
   OutputFormatterModuleResources:
